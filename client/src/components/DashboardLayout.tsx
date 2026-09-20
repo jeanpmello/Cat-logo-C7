@@ -20,7 +20,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, Package, PanelLeft, Store } from "lucide-react";
+import { LogOut, MessageCircle, Package, PanelLeft, Store } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -28,6 +28,7 @@ import { Button } from "./ui/button";
 
 const menuItems = [
   { icon: Package, label: "Produtos", path: "/admin" },
+  { icon: MessageCircle, label: "Assistente de vendas", path: "/assistente" },
   { icon: Store, label: "Catálogo público", path: "/" },
 ];
 
