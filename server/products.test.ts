@@ -37,6 +37,40 @@ describe("products router", () => {
     await expect(caller.products.uploadImage({ filename: "foto.png", mimeType: "image/png", base64: "aGVsbG8=" })).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
+  it("permite consulta de inventário ao viewer, mas bloqueia importação e arquivamento", async () => {
+    const caller = appRouter.createCaller(createContext({ user: {
+      id: 101,
+      openId: "viewer-user",
+      name: "Pessoa de consulta",
+      email: "viewer@example.com",
+      loginMethod: "private",
+      role: "viewer",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      lastSignedIn: new Date(),
+    } }));
+
+    expect(Array.isArray(await caller.products.adminList())).toBe(true);
+    await expect(caller.products.bulkUpsert({ items: [{ action: "update", id: 1, data: { model: "Alteração não autorizada" } }] })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(caller.products.remove({ id: 1 })).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("permite que um vendedor consulte o inventário", async () => {
+    const caller = appRouter.createCaller(createContext({ user: {
+      id: 102,
+      openId: "seller-user",
+      name: "Pessoa vendedora",
+      email: "seller@example.com",
+      loginMethod: "private",
+      role: "seller",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      lastSignedIn: new Date(),
+    } }));
+
+    expect(Array.isArray(await caller.products.adminList())).toBe(true);
+  });
+
   it("blocks authenticated non-admin users from the inventory", async () => {
     const caller = appRouter.createCaller(createContext({ user: {
       id: 99,
