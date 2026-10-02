@@ -1,7 +1,8 @@
 import { and, asc, desc, eq, ne } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { AuthorizedUser, AuditLog, InsertProduct, InsertUser, Product, ProductImage, auditLogs, authorizedUsers, productImages, products, users } from "../drizzle/schema";
-import { normalizeProductData, normalizeSerial } from "../shared/productData";
+import { normalizeProductData, normalizeSerial, validateProductData } from "../shared/productData";
+import type { ProductImportItem, ProductImportValues } from "../shared/productImport";
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -60,5 +61,76 @@ export async function updateProduct(id: number, input: Partial<InsertProduct>, u
 export async function deleteProduct(id: number, userId?: number) { const db = await getDb(); if (!db) throw new Error("Database not available"); const existing = await getProductById(id); await db.update(products).set({ status: "hidden" }).where(eq(products.id, id)); await recordAudit(userId ?? null, "archive", "product", id, `Produto ocultado: ${existing?.brand ?? ""} ${existing?.model ?? ""}`); return { success: true } as const; }
 export async function restoreProduct(id: number, userId?: number) { const db = await getDb(); if (!db) throw new Error("Database not available"); const existing = await getProductById(id); if (!existing) throw new Error("Produto não encontrado"); await db.update(products).set({ status: "available" }).where(eq(products.id, id)); await recordAudit(userId ?? null, "restore", "product", id, `Produto restaurado: ${existing.brand} ${existing.model}`); return { success: true } as const; }
 export async function duplicateProduct(id: number, userId?: number) { const existing = await getProductById(id); if (!existing) throw new Error("Produto não encontrado"); const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, ...copy } = existing; const saved = await insertProduct({ ...copy, model: `${copy.model} (cópia)`, status: "hidden", imageUrl: copy.imageUrl, imageKey: copy.imageKey }, userId); const images = await getProductImages(id); for (const image of images) await addProductImage({ productId: saved!.id, url: image.url, storageKey: image.storageKey, caption: image.caption }); return saved; }
-export async function bulkUpsertProducts(inputs: Array<InsertProduct & { id?: number }>, userId?: number) { const saved: Product[] = []; for (const input of inputs) { if (input.id && await getProductById(input.id)) { const { id, ...changes } = input; const updated = await updateProduct(id, changes, userId); if (updated) saved.push(updated); } else { const inserted = await insertProduct(input, userId); if (inserted) saved.push(inserted); } } return saved; }
+export async function bulkUpsertProducts(items: ProductImportItem[], userId?: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const seenIds = new Set<number>();
+  for (const item of items) {
+    if (item.action !== "update") continue;
+    if (seenIds.has(item.id)) throw new Error(`O ID ${item.id} aparece mais de uma vez na importação.`);
+    seenIds.add(item.id);
+    if (Object.keys(item.data).length === 0) throw new Error(`A atualização do produto ${item.id} não contém campos preenchidos.`);
+  }
+
+  return db.transaction(async (tx) => {
+    const prepared: Array<
+      | { action: "create"; data: ProductImportValues }
+      | { action: "update"; id: number; data: Product }
+    > = [];
+
+    // Preflight every row while holding the same transaction; no row is written until all pass.
+    for (const item of items) {
+      if (item.action === "create") {
+        const normalized = normalizeProductData(item.data);
+        const errors = validateProductData(normalized).filter((issue) => issue.level === "error");
+        if (errors.length) throw new Error(`Importação inválida para ${normalized.brand} ${normalized.model}: ${errors.map((issue) => issue.message).join(" ")}`);
+        prepared.push({ action: "create", data: normalized });
+        continue;
+      }
+
+      const currentRows = await tx.select().from(products).where(eq(products.id, item.id)).limit(1);
+      const current = currentRows[0];
+      if (!current) throw new Error(`O produto de ID ${item.id} não existe mais; nenhuma alteração foi gravada.`);
+      const normalized = normalizeProductData({ ...current, ...item.data } as Product);
+      const errors = validateProductData(normalized).filter((issue) => issue.level === "error");
+      if (errors.length) throw new Error(`Importação inválida para o produto ${item.id}: ${errors.map((issue) => issue.message).join(" ")}`);
+      prepared.push({ action: "update", id: item.id, data: normalized });
+    }
+
+    const seenSerials = new Set<string>();
+    for (const item of prepared) {
+      const serial = normalizeSerial(item.data.serial);
+      if (!serial) continue;
+      if (seenSerials.has(serial)) throw new Error(`O número de série ${serial} aparece mais de uma vez na importação.`);
+      seenSerials.add(serial);
+      const conflict = item.action === "update"
+        ? await tx.select().from(products).where(and(eq(products.serial, serial), ne(products.id, item.id))).limit(1)
+        : await tx.select().from(products).where(eq(products.serial, serial)).limit(1);
+      if (conflict[0]) throw new Error(`O número de série ${serial} já está cadastrado em outro produto.`);
+    }
+
+    const saved: Product[] = [];
+    for (const item of prepared) {
+      if (item.action === "create") {
+        const result = await tx.insert(products).values(item.data);
+        const rows = await tx.select().from(products).where(eq(products.id, Number(result[0].insertId))).limit(1);
+        const product = rows[0];
+        if (!product) throw new Error(`Não foi possível confirmar o produto ${item.data.brand} ${item.data.model}.`);
+        saved.push(product);
+        await tx.insert(auditLogs).values({ userId: userId ?? null, action: "create", entity: "product", entityId: product.id, summary: `Produto criado por importação: ${product.brand} ${product.model}` });
+        continue;
+      }
+
+      const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, ...changes } = item.data;
+      await tx.update(products).set(changes).where(eq(products.id, item.id));
+      const updatedRows = await tx.select().from(products).where(eq(products.id, item.id)).limit(1);
+      const updated = updatedRows[0];
+      if (!updated) throw new Error(`Não foi possível confirmar a atualização do produto ${item.id}.`);
+      saved.push(updated);
+      await tx.insert(auditLogs).values({ userId: userId ?? null, action: "update", entity: "product", entityId: item.id, summary: `Produto atualizado por importação: ${updated.brand} ${updated.model}` });
+    }
+    return saved;
+  });
+}
 export async function hideSoldProducts() { const db = await getDb(); if (!db) throw new Error("Database not available"); await db.update(products).set({ status: "sold" }).where(and(eq(products.status, "available"), ne(products.id, 0))); }
