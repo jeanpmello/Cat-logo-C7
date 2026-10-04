@@ -6,7 +6,7 @@ import type { Product } from "@shared/types";
 import Admin from "./Admin";
 
 const state = vi.hoisted(() => {
-  const callNames = ["create", "update", "remove", "restore", "duplicate", "bulk", "upload", "addImage", "createPrivate", "removePrivate", "myPassword", "addAuthorized", "removeAuthorized"];
+  const callNames = ["create", "update", "remove", "restore", "registerSale", "duplicate", "bulk", "upload", "addImage", "createPrivate", "removePrivate", "myPassword", "addAuthorized", "removeAuthorized"];
   const calls: Record<string, any[]> = Object.fromEntries(callNames.map((name) => [name, []]));
   const failNext: Record<string, string | undefined> = {};
   const successToast = vi.fn();
@@ -30,11 +30,13 @@ const state = vi.hoisted(() => {
     } else if (key === "update") {
       state.products = state.products.map((product: any) => product.id === input.id ? { ...product, ...input.data, updatedAt: new Date() } : product);
     } else if (key === "remove") {
-      state.products = state.products.map((product: any) => product.id === input.id ? { ...product, status: "hidden" } : product);
+      state.products = state.products.map((product: any) => product.id === input.id ? { ...product, statusBeforeArchive: product.status, status: "hidden" } : product);
     } else if (key === "restore") {
-      state.products = state.products.map((product: any) => product.id === input.id ? { ...product, status: "available" } : product);
+      state.products = state.products.map((product: any) => product.id === input.id ? { ...product, status: product.statusBeforeArchive ?? "available", statusBeforeArchive: null } : product);
+    } else if (key === "registerSale") {
+      state.products = state.products.map((product: any) => product.id === input.id ? { ...product, status: "sold", soldByUserId: input.sellerId, soldByName: state.sellers.find((seller: any) => seller.id === input.sellerId)?.name } : product);
     }
-    const result = key === "bulk" ? input.items.map((_: unknown, index: number) => ({ id: index + 1 })) : { success: true };
+    const result = key === "bulk" ? input.items.map((_: unknown, index: number) => ({ id: index + 1 })) : key === "registerSale" ? state.products.find((product: any) => product.id === input.id) : { success: true };
     options?.onSuccess?.(result);
     return result;
   };
@@ -51,6 +53,7 @@ const state = vi.hoisted(() => {
     mutation,
     role: "seller",
     products: [] as any[],
+    sellers: [{ id: 9, name: "Ana Lima" }, { id: 15, name: "Caio Souza" }] as any[],
     xlsxRows: [] as any[],
   };
 });
@@ -60,6 +63,8 @@ vi.mock("@/lib/trpc", () => ({
     useUtils: () => state.utils,
     products: {
       adminList: { useQuery: () => ({ data: state.products, isLoading: false }) },
+      eligibleSellers: { useQuery: () => ({ data: state.sellers, isLoading: false }) },
+      registerSale: { useMutation: state.mutation("registerSale") },
       create: { useMutation: state.mutation("create") },
       update: { useMutation: state.mutation("update") },
       remove: { useMutation: state.mutation("remove") },
@@ -125,6 +130,9 @@ const product: Product = {
   imageUrl: null,
   imageKey: null,
   status: "available",
+  statusBeforeArchive: null,
+  soldByUserId: null,
+  soldByName: null,
   badge: null,
   sortOrder: 1,
   createdAt: new Date("2026-01-01T00:00:00Z"),
@@ -134,6 +142,7 @@ const product: Product = {
 function resetState() {
   state.role = "seller";
   state.products = [{ ...product }];
+  state.sellers = [{ id: 9, name: "Ana Lima" }, { id: 15, name: "Caio Souza" }];
   state.xlsxRows = [];
   for (const key of Object.keys(state.calls)) state.calls[key] = [];
   for (const key of Object.keys(state.failNext)) delete state.failNext[key];
@@ -190,6 +199,29 @@ describe("painel administrativo", () => {
     await waitFor(() => expect(state.calls.restore).toEqual([{ id: 42 }]));
     expect(state.calls.restore).toEqual([{ id: 42 }]);
     expect(state.products.find((item: Product) => item.id === 42)?.status).toBe("available");
+  });
+
+  it("registra a venda com vendedor escolhido e restaura o status vendido após arquivamento", async () => {
+    render(<Admin />);
+    fireEvent.click(screen.getByRole("button", { name: "Registrar venda de Dell Latitude 5420" }));
+
+    const selector = await screen.findByRole("combobox", { name: "Quem vendeu" });
+    const confirmButton = screen.getByRole("button", { name: "Confirmar venda" });
+    expect(confirmButton.hasAttribute("disabled")).toBe(true);
+    fireEvent.change(selector, { target: { value: "9" } });
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => expect(state.calls.registerSale).toEqual([{ id: 42, sellerId: 9 }]));
+    expect(state.products[0]).toMatchObject({ status: "sold", soldByUserId: 9, soldByName: "Ana Lima" });
+    expect(screen.getByText("Vendido por Ana Lima (#9)")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Arquivar Dell Latitude 5420" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Arquivar Dell Latitude 5420" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Arquivar produto" }));
+    await waitFor(() => expect(state.products[0]).toMatchObject({ status: "hidden", statusBeforeArchive: "sold" }));
+    const archiveToast = state.successToast.mock.calls[state.successToast.mock.calls.length - 1];
+    archiveToast[1].action.onClick();
+    await waitFor(() => expect(state.products[0]).toMatchObject({ status: "sold", soldByUserId: 9, soldByName: "Ana Lima", statusBeforeArchive: null }));
   });
 
   it("mostra inclusões e atualizações na prévia, não grava antes de confirmar e preserva a prévia após falha", async () => {

@@ -517,6 +517,12 @@ h1 em, h2 em { color: var(--blue); font-style: normal; }
 .inventory-row { grid-template-columns: 1.25fr 1.05fr .9fr .55fr minmax(210px, auto); }
 .inventory-actions .design-card-button { display: inline-flex; width: auto; min-width: 88px; align-items: center; gap: 5px; padding: 5px 8px; color: #72dfff; border-color: rgba(55,198,255,.28); background: rgba(32,174,235,.08); font-family: 'DM Mono'; font-size: 8px; text-transform: uppercase; }
 .inventory-actions .design-card-button:hover { color: #d8f6ff; border-color: rgba(55,198,255,.62); background: rgba(32,174,235,.18); }
+.inventory-actions .register-sale-button { display: inline-flex; width: auto; min-width: 104px; align-items: center; gap: 5px; padding: 5px 8px; color: #80e3c1; border-color: rgba(96,224,183,.3); background: rgba(72,207,166,.08); font-family: 'DM Mono'; font-size: 8px; text-transform: uppercase; }
+.inventory-actions .register-sale-button:hover { color: #d8fff1; border-color: rgba(96,224,183,.65); background: rgba(72,207,166,.18); }
+.inventory-status { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.sale-attribution { color: #9cc8bb; font-size: 8px; line-height: 1.3; }
+.sale-confirm-modal .confirm-modal-icon { color: #80e3c1; border-color: rgba(96,224,183,.35); background: rgba(72,207,166,.12); }
+.sale-confirm-modal .admin-field { margin-top: 20px; }
 
 .photo-editor-backdrop, .card-designer-backdrop { z-index: 100; overflow: auto; padding: 24px; }
 .photo-editor-modal, .card-designer-modal { position: relative; width: min(1100px, 100%); max-height: calc(100vh - 48px); overflow: auto; padding: 28px; border: 1px solid rgba(91,201,245,.24); border-radius: 12px; color: #e7f8ff; background: #082038; box-shadow: 0 35px 120px rgba(0,0,0,.48); }
@@ -585,6 +591,9 @@ h1 em, h2 em { color: var(--blue); font-style: normal; }
   .inventory-row { grid-template-columns: 1fr auto; }
   .inventory-actions .design-card-button { width: 32px; min-width: 32px; padding: 6px; }
   .inventory-actions .design-card-button span { display: none; }
+  .inventory-actions .register-sale-button { width: 32px; min-width: 32px; padding: 6px; }
+  .inventory-actions .register-sale-button span { display: none; }
+  .inventory-status { grid-column: 1; margin-left: 49px; }
 }
 @media (max-width: 480px) {
   .photo-fit-tabs, .photo-editor-buttons, .card-option-grid { grid-template-columns: 1fr; }

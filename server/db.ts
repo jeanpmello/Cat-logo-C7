@@ -1,7 +1,8 @@
-import { and, asc, desc, eq, ne } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { AuthorizedUser, AuditLog, InsertProduct, InsertUser, Product, ProductImage, auditLogs, authorizedUsers, productImages, products, users } from "../drizzle/schema";
 import { normalizeProductData, normalizeSerial, validateProductData } from "../shared/productData";
+import { archiveProductState, buildSaleAuditRecord, registerSaleState, restoreProductState } from "../shared/productLifecycle";
 import type { ProductImportItem, ProductImportValues } from "../shared/productImport";
 import { ENV } from "./_core/env";
 
@@ -37,6 +38,32 @@ export function isConfiguredOwner(openId: string) { return Boolean(ENV.ownerOpen
 
 export async function listAuthorizedUsers(): Promise<AuthorizedUser[]> { const db = await getDb(); if (!db) return []; return db.select().from(authorizedUsers).orderBy(asc(authorizedUsers.email)); }
 export async function getAuthorizedUserByEmail(email: string) { const db = await getDb(); if (!db) return undefined; const normalized = email.trim().toLowerCase(); const result = await db.select().from(authorizedUsers).where(eq(authorizedUsers.email, normalized)).limit(1); return result[0]; }
+export type EligibleSeller = { id: number; name: string };
+
+function displaySellerName(user: { id: number; name: string | null }): string {
+  return user.name?.trim().slice(0, 120) || `Vendedor #${user.id}`;
+}
+
+export async function listEligibleSellers(): Promise<EligibleSeller[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select({ id: users.id, name: users.name })
+    .from(users)
+    .where(inArray(users.role, ["seller", "admin"]))
+    .orderBy(asc(users.name), asc(users.id));
+  return rows.map((user) => ({ id: user.id, name: displaySellerName(user) }));
+}
+
+export async function getEligibleSellerById(id: number): Promise<EligibleSeller | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select({ id: users.id, name: users.name })
+    .from(users)
+    .where(and(eq(users.id, id), inArray(users.role, ["seller", "admin"])))
+    .limit(1);
+  const user = rows[0];
+  return user ? { id: user.id, name: displaySellerName(user) } : undefined;
+}
 export async function isAuthorizedEmail(email: string) { return Boolean(await getAuthorizedUserByEmail(email)); }
 export async function addAuthorizedUser(email: string, label?: string | null, accessLevel: "viewer" | "seller" | "admin" = "seller") {
   const db = await getDb(); if (!db) throw new Error("Database not available"); const normalized = email.trim().toLowerCase();
@@ -58,9 +85,70 @@ export async function listAuditLogs(): Promise<AuditLog[]> { const db = await ge
 
 export async function insertProduct(input: InsertProduct, userId?: number) { const db = await getDb(); if (!db) throw new Error("Database not available"); const normalized = normalizeProductData(input as InsertProduct & Parameters<typeof normalizeProductData>[0]); if (normalized.serial !== "—" && await getProductBySerial(normalized.serial)) throw new Error(`O número de série ${normalized.serial} já está cadastrado.`); const result = await db.insert(products).values(normalized); const saved = await getProductById(Number(result[0].insertId)); await recordAudit(userId ?? null, "create", "product", saved?.id ?? null, `Produto criado: ${normalized.brand} ${normalized.model}`); return saved; }
 export async function updateProduct(id: number, input: Partial<InsertProduct>, userId?: number) { const db = await getDb(); if (!db) throw new Error("Database not available"); const current = await getProductById(id); if (!current) throw new Error("Produto não encontrado"); const normalized = normalizeProductData({ ...current, ...input }); if (normalized.serial !== "—" && await getProductBySerial(normalized.serial, id)) throw new Error(`O número de série ${normalized.serial} já está cadastrado.`); const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, ...changes } = normalized; await db.update(products).set(changes).where(eq(products.id, id)); const saved = await getProductById(id); await recordAudit(userId ?? null, "update", "product", id, `Produto atualizado: ${saved?.brand ?? ""} ${saved?.model ?? ""}`); return saved; }
-export async function deleteProduct(id: number, userId?: number) { const db = await getDb(); if (!db) throw new Error("Database not available"); const existing = await getProductById(id); await db.update(products).set({ status: "hidden" }).where(eq(products.id, id)); await recordAudit(userId ?? null, "archive", "product", id, `Produto ocultado: ${existing?.brand ?? ""} ${existing?.model ?? ""}`); return { success: true } as const; }
-export async function restoreProduct(id: number, userId?: number) { const db = await getDb(); if (!db) throw new Error("Database not available"); const existing = await getProductById(id); if (!existing) throw new Error("Produto não encontrado"); await db.update(products).set({ status: "available" }).where(eq(products.id, id)); await recordAudit(userId ?? null, "restore", "product", id, `Produto restaurado: ${existing.brand} ${existing.model}`); return { success: true } as const; }
-export async function duplicateProduct(id: number, userId?: number) { const existing = await getProductById(id); if (!existing) throw new Error("Produto não encontrado"); const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, ...copy } = existing; const saved = await insertProduct({ ...copy, model: `${copy.model} (cópia)`, status: "hidden", imageUrl: copy.imageUrl, imageKey: copy.imageKey }, userId); const images = await getProductImages(id); for (const image of images) await addProductImage({ productId: saved!.id, url: image.url, storageKey: image.storageKey, caption: image.caption }); return saved; }
+export async function deleteProduct(id: number, userId?: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async (tx) => {
+    const rows = await tx.select().from(products).where(eq(products.id, id)).limit(1).for("update");
+    const existing = rows[0];
+    if (!existing) throw new Error("Produto não encontrado");
+    const archivedState = archiveProductState(existing.status);
+    await tx.update(products).set(archivedState).where(eq(products.id, id));
+    await tx.insert(auditLogs).values({ userId: userId ?? null, action: "archive", entity: "product", entityId: id, summary: `Produto arquivado: ${existing.brand} ${existing.model}` });
+    return { success: true } as const;
+  });
+}
+
+export async function restoreProduct(id: number, userId?: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async (tx) => {
+    const rows = await tx.select().from(products).where(eq(products.id, id)).limit(1).for("update");
+    const existing = rows[0];
+    if (!existing) throw new Error("Produto não encontrado");
+    if (existing.status !== "hidden") throw new Error("O produto não está arquivado.");
+    await tx.update(products).set(restoreProductState(existing.statusBeforeArchive)).where(eq(products.id, id));
+    await tx.insert(auditLogs).values({ userId: userId ?? null, action: "restore", entity: "product", entityId: id, summary: `Produto restaurado: ${existing.brand} ${existing.model}` });
+    return { success: true } as const;
+  });
+}
+
+export async function registerProductSale(productId: number, sellerId: number, actorUserId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  return db.transaction(async (tx) => {
+    const sellers = await tx.select({ id: users.id, name: users.name })
+      .from(users)
+      .where(and(eq(users.id, sellerId), inArray(users.role, ["seller", "admin"])))
+      .limit(1)
+      .for("update");
+    const seller = sellers[0];
+    if (!seller) throw new Error("O vendedor selecionado não existe ou não está elegível.");
+
+    const productRows = await tx.select().from(products).where(eq(products.id, productId)).limit(1).for("update");
+    const product = productRows[0];
+    if (!product) throw new Error("Produto não encontrado.");
+
+    const sellerName = displaySellerName(seller);
+    const saleState = registerSaleState(product.status, { id: seller.id, name: sellerName });
+    await tx.update(products).set(saleState).where(eq(products.id, productId));
+    await tx.insert(auditLogs).values(buildSaleAuditRecord(actorUserId, product, { id: seller.id, name: sellerName }));
+    const updated = await tx.select().from(products).where(eq(products.id, productId)).limit(1);
+    if (!updated[0]) throw new Error("Não foi possível confirmar a venda do produto.");
+    return updated[0];
+  });
+}
+
+export async function duplicateProduct(id: number, userId?: number) {
+  const existing = await getProductById(id);
+  if (!existing) throw new Error("Produto não encontrado");
+  const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, statusBeforeArchive: _statusBeforeArchive, soldByUserId: _soldByUserId, soldByName: _soldByName, ...copy } = existing;
+  const saved = await insertProduct({ ...copy, model: `${copy.model} (cópia)`, status: "hidden", imageUrl: copy.imageUrl, imageKey: copy.imageKey }, userId);
+  const images = await getProductImages(id);
+  for (const image of images) await addProductImage({ productId: saved!.id, url: image.url, storageKey: image.storageKey, caption: image.caption });
+  return saved;
+}
 export async function bulkUpsertProducts(items: ProductImportItem[], userId?: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -133,4 +221,3 @@ export async function bulkUpsertProducts(items: ProductImportItem[], userId?: nu
     return saved;
   });
 }
-export async function hideSoldProducts() { const db = await getDb(); if (!db) throw new Error("Database not available"); await db.update(products).set({ status: "sold" }).where(and(eq(products.status, "available"), ne(products.id, 0))); }

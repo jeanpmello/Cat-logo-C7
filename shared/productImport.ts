@@ -1,7 +1,7 @@
 import type { Product } from "../drizzle/schema";
 import { normalizeProductData, normalizeSerial, validateProductData } from "./productData";
 
-export type ProductImportValues = Pick<Product, "brand" | "model" | "processor" | "generation" | "ram" | "ramType" | "storage" | "gpu" | "os" | "serial" | "screen" | "category" | "condition" | "price" | "status" | "sortOrder"> &
+export type ProductImportValues = Pick<Product, "brand" | "model" | "processor" | "generation" | "ram" | "ramType" | "storage" | "gpu" | "os" | "serial" | "screen" | "category" | "condition" | "price" | "sortOrder"> &
   Partial<Pick<Product, "cosmeticCondition" | "battery" | "accessories" | "notes" | "originalPrice" | "promoPrice" | "imageUrl" | "imageKey" | "badge">>;
 export type ProductImportItem =
   | { action: "create"; data: ProductImportValues }
@@ -44,7 +44,7 @@ const COLUMN_NAMES = {
   sortOrder: ["ordem", "sortorder"],
 } as const;
 
-type ImportField = Exclude<keyof typeof COLUMN_NAMES, "id">;
+type ImportField = Exclude<keyof typeof COLUMN_NAMES, "id" | "status">;
 
 function normalizeColumn(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -80,15 +80,6 @@ function parseCondition(value: string | undefined) {
   return null;
 }
 
-function parseStatus(value: string | undefined) {
-  if (!value) return undefined;
-  const normalized = normalizeColumn(value);
-  if (["available", "disponivel", "ativo"].includes(normalized)) return "available" as const;
-  if (["sold", "vendido"].includes(normalized)) return "sold" as const;
-  if (["hidden", "oculto", "arquivado", "arquivada"].includes(normalized)) return "hidden" as const;
-  return null;
-}
-
 function getMappedValues(row: SpreadsheetRow, line: number, addError: (line: number, message: string) => void) {
   const values: Partial<ProductImportValues> = {};
   const stringFields: Array<Exclude<ImportField, "category" | "condition" | "status" | "sortOrder">> = [
@@ -112,9 +103,7 @@ function getMappedValues(row: SpreadsheetRow, line: number, addError: (line: num
   if (condition === null) addError(line, "Condição inválida; use Novo ou Seminovo revisado.");
   else if (condition) values.condition = condition;
 
-  const status = parseStatus(getCell(row, COLUMN_NAMES.status));
-  if (status === null) addError(line, "Status inválido; use Disponível, Vendido ou Oculto.");
-  else if (status) values.status = status;
+  if (getCell(row, COLUMN_NAMES.status)) addError(line, "O status não pode ser alterado pela planilha; use as ações Registrar venda ou Arquivar.");
 
   const sortOrder = getCell(row, COLUMN_NAMES.sortOrder);
   if (sortOrder !== undefined) {
@@ -206,7 +195,6 @@ export function previewProductImport(rows: SpreadsheetRow[], existingProducts: r
       promoPrice: mapped.promoPrice ?? null,
       imageUrl: mapped.imageUrl ?? null,
       imageKey: null,
-      status: mapped.status ?? "available",
       badge: mapped.badge ?? null,
       sortOrder: mapped.sortOrder ?? index + 1,
     };

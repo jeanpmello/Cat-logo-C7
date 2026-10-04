@@ -32,11 +32,57 @@ export const authorizedUsers = mysqlTable("authorizedUsers", {
 
 export const products = mysqlTable("products", {
   id: int("id").autoincrement().primaryKey(),
-  brand: varchar("brand", { length: 80 }).notNull(), model: varchar("model", { length: 140 }).notNull(), processor: varchar("processor", { length: 140 }).notNull(), generation: varchar("generation", { length: 40 }).notNull(), ram: varchar("ram", { length: 20 }).notNull(), ramType: varchar("ramType", { length: 20 }).notNull(), storage: varchar("storage", { length: 40 }).notNull(), gpu: varchar("gpu", { length: 120 }).notNull(), os: varchar("os", { length: 60 }).notNull(), serial: varchar("serial", { length: 140 }).notNull(), screen: varchar("screen", { length: 30 }).notNull(), category: mysqlEnum("category", ["Notebook", "Desktop"]).default("Notebook").notNull(), condition: mysqlEnum("condition", ["Seminovo revisado", "Novo"]).default("Seminovo revisado").notNull(), cosmeticCondition: varchar("cosmeticCondition", { length: 160 }), battery: varchar("battery", { length: 120 }), accessories: varchar("accessories", { length: 255 }), notes: text("notes"), price: varchar("price", { length: 60 }).default("Sob consulta").notNull(), originalPrice: varchar("originalPrice", { length: 60 }), promoPrice: varchar("promoPrice", { length: 60 }), imageUrl: text("imageUrl"), imageKey: varchar("imageKey", { length: 255 }), status: mysqlEnum("status", ["available", "sold", "hidden"]).default("available").notNull(), badge: varchar("badge", { length: 80 }), sortOrder: int("sortOrder").default(0).notNull(), createdAt: timestamp("createdAt").defaultNow().notNull(), updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  brand: varchar("brand", { length: 80 }).notNull(),
+  model: varchar("model", { length: 140 }).notNull(),
+  processor: varchar("processor", { length: 140 }).notNull(),
+  generation: varchar("generation", { length: 40 }).notNull(),
+  ram: varchar("ram", { length: 20 }).notNull(),
+  ramType: varchar("ramType", { length: 20 }).notNull(),
+  storage: varchar("storage", { length: 40 }).notNull(),
+  gpu: varchar("gpu", { length: 120 }).notNull(),
+  os: varchar("os", { length: 60 }).notNull(),
+  serial: varchar("serial", { length: 140 }).notNull(),
+  screen: varchar("screen", { length: 30 }).notNull(),
+  category: mysqlEnum("category", ["Notebook", "Desktop"]).default("Notebook").notNull(),
+  condition: mysqlEnum("condition", ["Seminovo revisado", "Novo"]).default("Seminovo revisado").notNull(),
+  cosmeticCondition: varchar("cosmeticCondition", { length: 160 }),
+  battery: varchar("battery", { length: 120 }),
+  accessories: varchar("accessories", { length: 255 }),
+  notes: text("notes"),
+  price: varchar("price", { length: 60 }).default("Sob consulta").notNull(),
+  originalPrice: varchar("originalPrice", { length: 60 }),
+  promoPrice: varchar("promoPrice", { length: 60 }),
+  imageUrl: text("imageUrl"),
+  imageKey: varchar("imageKey", { length: 255 }),
+  status: mysqlEnum("status", ["available", "sold", "hidden"]).default("available").notNull(),
+  statusBeforeArchive: mysqlEnum("statusBeforeArchive", ["available", "sold"]),
+  soldByUserId: int("soldByUserId"),
+  soldByName: varchar("soldByName", { length: 120 }),
+  badge: varchar("badge", { length: 80 }),
+  sortOrder: int("sortOrder").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
-export const productImages = mysqlTable("productImages", { id: int("id").autoincrement().primaryKey(), productId: int("productId").notNull(), url: text("url").notNull(), storageKey: varchar("storageKey", { length: 255 }), caption: varchar("caption", { length: 160 }), sortOrder: int("sortOrder").default(0).notNull(), createdAt: timestamp("createdAt").defaultNow().notNull() });
-export const auditLogs = mysqlTable("auditLogs", { id: int("id").autoincrement().primaryKey(), userId: int("userId"), action: varchar("action", { length: 40 }).notNull(), entity: varchar("entity", { length: 40 }).notNull(), entityId: int("entityId"), summary: varchar("summary", { length: 255 }).notNull(), createdAt: timestamp("createdAt").defaultNow().notNull() });
+export const productImages = mysqlTable("productImages", {
+  id: int("id").autoincrement().primaryKey(),
+  productId: int("productId").notNull(),
+  url: text("url").notNull(),
+  storageKey: varchar("storageKey", { length: 255 }),
+  caption: varchar("caption", { length: 160 }),
+  sortOrder: int("sortOrder").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export const auditLogs = mysqlTable("auditLogs", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId"),
+  action: varchar("action", { length: 40 }).notNull(),
+  entity: varchar("entity", { length: 40 }).notNull(),
+  entityId: int("entityId"),
+  summary: varchar("summary", { length: 255 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;

@@ -27,6 +27,9 @@ const existingProduct: Product = {
   imageUrl: "https://example.test/dell.jpg",
   imageKey: null,
   status: "available",
+  statusBeforeArchive: null,
+  soldByUserId: null,
+  soldByName: null,
   badge: null,
   sortOrder: 1,
   createdAt: new Date("2026-01-01T00:00:00Z"),
@@ -80,6 +83,13 @@ describe("prévia de importação de produtos", () => {
     const preview = previewProductImport([{ id: 42, marca: "", modelo: "  " }], [existingProduct]);
 
     expect(preview.errors).toEqual([{ line: 2, messages: ["Nenhum campo com valor foi informado para atualização; células vazias preservam os dados atuais."] }]);
+    expect(preview.items).toEqual([]);
+  });
+
+  it("bloqueia mudanças de status por planilha para manter venda e arquivamento explícitos", () => {
+    const preview = previewProductImport([{ id: 42, modelo: "Latitude 5420", status: "vendido" }], [existingProduct]);
+
+    expect(preview.errors).toEqual([{ line: 2, messages: ["O status não pode ser alterado pela planilha; use as ações Registrar venda ou Arquivar."] }]);
     expect(preview.items).toEqual([]);
   });
 });
