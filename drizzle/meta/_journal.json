@@ -29,6 +29,13 @@
       "when": 1789619210409,
       "tag": "0003_cool_agent_zero",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1791145438100,
+      "tag": "0004_record_product_sales_and_archive_restore",
+      "breakpoints": true
     }
   ]
 }
