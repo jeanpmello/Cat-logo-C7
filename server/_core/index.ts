@@ -6,6 +6,7 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
+import { listPublicProducts } from "../db";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 
@@ -36,6 +37,15 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   registerStorageProxy(app);
   registerOAuthRoutes(app);
+  app.get("/sitemap.xml", async (req, res) => {
+    // Search engines must index the official catalog domain, never the internal
+    // Cloud Run/Manus host that may sit behind the public deployment.
+    const origin = "https://catalogo.c7tecnologia.com";
+    const products = await listPublicProducts();
+    const urls = [origin + "/", ...products.map((product) => `${origin}/?produto=${product.id}`)];
+    const escapeXml = (value: string) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+    res.type("application/xml").send(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls.map((url) => `<url><loc>${escapeXml(url)}</loc><changefreq>${url === origin + "/" ? "daily" : "weekly"}</changefreq><priority>${url === origin + "/" ? "1.0" : "0.8"}</priority></url>`).join("")}</urlset>`);
+  });
   // tRPC API
   app.use(
     "/api/trpc",

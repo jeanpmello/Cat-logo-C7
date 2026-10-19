@@ -20,7 +20,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LogOut, MessageCircle, Package, PanelLeft, Store } from "lucide-react";
+import { BarChart3, CalendarClock, FileSpreadsheet, FileText, ImagePlus, LogOut, Megaphone, Package, PanelLeft, Plus, ShieldCheck, Store, UserPlus } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -28,8 +28,19 @@ import { Button } from "./ui/button";
 
 const menuItems = [
   { icon: Package, label: "Produtos", path: "/admin" },
-  { icon: MessageCircle, label: "Assistente de vendas", path: "/assistente" },
   { icon: Store, label: "Catálogo público", path: "/" },
+];
+
+const quickMenuItems = [
+  { icon: Plus, label: "Novo produto", target: "editor", adminOnly: false },
+  { icon: ImagePlus, label: "Cards", target: "cards", adminOnly: false },
+  { icon: Megaphone, label: "Campanhas", target: "campaigns", adminOnly: false },
+  { icon: CalendarClock, label: "Locações", target: "rentals", adminOnly: false },
+  { icon: ShieldCheck, label: "Garantias", target: "warranties", adminOnly: false },
+  { icon: BarChart3, label: "Relatórios", target: "reports", adminOnly: false },
+  { icon: FileText, label: "Histórico", target: "history", adminOnly: false },
+  { icon: FileSpreadsheet, label: "Planilha e backup", target: "import", adminOnly: false },
+  { icon: UserPlus, label: "Usuários", target: "users", adminOnly: true },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -103,7 +114,7 @@ export default function DashboardLayout({
         } as CSSProperties
       }
     >
-      <DashboardLayoutContent setSidebarWidth={setSidebarWidth}>
+      <DashboardLayoutContent sidebarWidth={sidebarWidth} setSidebarWidth={setSidebarWidth}>
         {children}
       </DashboardLayoutContent>
     </SidebarProvider>
@@ -111,11 +122,13 @@ export default function DashboardLayout({
 }
 
 type DashboardLayoutContentProps = {
+  sidebarWidth: number;
   children: React.ReactNode;
   setSidebarWidth: (width: number) => void;
 };
 
 function DashboardLayoutContent({
+  sidebarWidth,
   children,
   setSidebarWidth,
 }: DashboardLayoutContentProps) {
@@ -134,13 +147,28 @@ function DashboardLayoutContent({
     }
   }, [isCollapsed]);
 
+  // A sidebar muito larga deixa o inventário ilegível em notebooks/monitores
+  // comuns. Preserve a preferência em telas amplas, mas reduza-a de forma
+  // segura quando o conteúdo principal não tiver espaço suficiente.
+  useEffect(() => {
+    if (isMobile) return;
+    const syncSidebarToViewport = () => {
+      const viewportMax = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, window.innerWidth - 960));
+      setSidebarWidth(Math.min(sidebarWidth, viewportMax));
+    };
+    syncSidebarToViewport();
+    window.addEventListener("resize", syncSidebarToViewport);
+    return () => window.removeEventListener("resize", syncSidebarToViewport);
+  }, [isMobile, setSidebarWidth, sidebarWidth]);
+
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return;
 
       const sidebarLeft = sidebarRef.current?.getBoundingClientRect().left ?? 0;
       const newWidth = e.clientX - sidebarLeft;
-      if (newWidth >= MIN_WIDTH && newWidth <= MAX_WIDTH) {
+      const viewportMax = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, window.innerWidth - 960));
+      if (newWidth >= MIN_WIDTH && newWidth <= viewportMax) {
         setSidebarWidth(newWidth);
       }
     };
@@ -212,6 +240,24 @@ function DashboardLayoutContent({
                 );
               })}
             </SidebarMenu>
+            {!isCollapsed && <div className="sidebar-quick-heading">Acesso rápido</div>}
+            <SidebarMenu className="sidebar-quick-menu px-2 pb-2">
+              {quickMenuItems.filter(item => !item.adminOnly || user?.role === "admin").map(item => (
+                <SidebarMenuItem key={item.target}>
+                  <SidebarMenuButton
+                    onClick={() => {
+                      if (location !== "/admin") setLocation("/admin");
+                      window.dispatchEvent(new CustomEvent("c7-admin-jump", { detail: item.target }));
+                    }}
+                    tooltip={item.label}
+                    className="h-9 transition-all font-normal sidebar-quick-item"
+                  >
+                    <item.icon className="h-4 w-4" />
+                    <span>{item.label}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
           </SidebarContent>
 
           <SidebarFooter className="p-3">
@@ -270,7 +316,7 @@ function DashboardLayoutContent({
             </div>
           </div>
         )}
-        <main className="flex-1 p-4">{children}</main>
+        <main className={`flex-1 p-4 ${location === "/admin" ? "dashboard-main-admin" : ""}`}>{children}</main>
       </SidebarInset>
     </>
   );

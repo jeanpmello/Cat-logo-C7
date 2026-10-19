@@ -1,0 +1,1 @@
+ALTER TABLE `productImages` ADD `isPrimary` int DEFAULT 0 NOT NULL;

@@ -1,0 +1,1 @@
+ALTER TABLE `products` ADD `salePaymentMethod` varchar(80);

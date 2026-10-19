@@ -1,0 +1,1 @@
+ALTER TABLE `warrantyRecords` ADD `origin` enum('printed','manual') DEFAULT 'printed' NOT NULL;

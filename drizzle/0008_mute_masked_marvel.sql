@@ -1,0 +1,1 @@
+ALTER TABLE `productImages` ADD `mediaType` enum('image','video') DEFAULT 'image' NOT NULL;

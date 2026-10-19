@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatGeneration, formatPrice, formatRam, formatScreen, formatStorage, normalizeProductData, validateProductData } from "./productData";
+import { formatGeneration, formatInstallment10x, formatPrice, formatRam, formatScreen, formatStorage, normalizeProductData, validateProductData } from "./productData";
 
 const baseProduct = {
   brand: "lenovo",
@@ -30,6 +30,8 @@ describe("product data normalization", () => {
     expect(formatScreen("15.6 polegadas")).toBe('15,6"');
     expect(formatGeneration("10° geração")).toBe("10ª Geração");
     expect(formatPrice("1499")).toMatch(/R\$\s?1\.499,00/);
+    expect(formatInstallment10x("R$ 1.499,00")).toMatch(/10x de R\$\s?149,90 sem juros/);
+    expect(formatInstallment10x("Sob consulta")).toBe("");
   });
 
   it("normalizes a complete product consistently", () => {

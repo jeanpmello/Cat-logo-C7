@@ -92,6 +92,16 @@ export function formatPrice(value: unknown) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(amount);
 }
 
+export function formatInstallment10x(value: unknown) {
+  const formatted = formatPrice(value);
+  if (!formatted || formatted === "Sob consulta") return "";
+  const digits = formatted.replace(/[^\d,.-]/g, "");
+  const amount = Number(digits.replace(/\./g, "").replace(",", "."));
+  if (!Number.isFinite(amount) || amount <= 0) return "";
+  const installment = Math.round((amount / 10) * 100) / 100;
+  return `10x de ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(installment)} sem juros`;
+}
+
 export function normalizeSerial(value: unknown) {
   const text = cleanSpaces(value).toUpperCase();
   return PLACEHOLDERS.has(text.toLowerCase()) ? "" : text;

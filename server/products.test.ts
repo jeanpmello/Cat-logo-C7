@@ -31,6 +31,7 @@ describe("products router", () => {
     await expect(caller.products.remove({ id: 1 })).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(caller.products.restore({ id: 1 })).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(caller.products.uploadImage({ filename: "foto.png", mimeType: "image/png", base64: "aGVsbG8=" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(caller.products.setPrimary({ productId: 1, imageId: 1 })).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("blocks authenticated non-admin users from the inventory", async () => {
@@ -61,5 +62,20 @@ describe("products router", () => {
       lastSignedIn: new Date(),
     } }));
     await expect(caller.authorizedUsers.list()).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("requires a payment method when registering a sale", async () => {
+    const caller = appRouter.createCaller(createContext({ user: {
+      id: 101,
+      openId: "seller-user",
+      name: "Vendedor",
+      email: "seller@example.com",
+      loginMethod: "private",
+      role: "seller",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      lastSignedIn: new Date(),
+    } }));
+    await expect(caller.products.remove({ id: 1, sold: true, soldPrice: "R$ 1.000,00", salePaymentMethod: null })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 });

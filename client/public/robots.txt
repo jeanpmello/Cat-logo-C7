@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /login
+Sitemap: https://catalogo.c7tecnologia.com/sitemap.xml
