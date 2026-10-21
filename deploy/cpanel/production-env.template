@@ -1,0 +1,21 @@
+# Copie para o ambiente da aplicação Node.js no cPanel.
+# Nunca publique este arquivo com valores reais no GitHub.
+NODE_ENV=production
+PORT=3000
+
+# Banco MySQL/TiDB de produção
+DATABASE_URL=mysql://USUARIO:SENHA@HOST:3306/NOME_DO_BANCO
+
+# Sessão e autenticação Manus OAuth
+JWT_SECRET=GERAR_UM_SEGREDO_LONGO_E_ALEATORIO
+VITE_APP_ID=COLOCAR_APP_ID
+OAUTH_SERVER_URL=https://SEU_SERVIDOR_OAUTH
+VITE_OAUTH_PORTAL_URL=https://SEU_PORTAL_OAUTH
+OWNER_OPEN_ID=OPEN_ID_DO_RESPONSAVEL
+OWNER_NAME=Nome do responsável
+
+# Storage utilizado pelos anexos, imagens e documentos de garantia
+BUILT_IN_FORGE_API_URL=https://SEU_FORGE_API
+BUILT_IN_FORGE_API_KEY=COLOCAR_CHAVE_FORGE
+VITE_FRONTEND_FORGE_API_URL=https://SEU_FORGE_API
+VITE_FRONTEND_FORGE_API_KEY=COLOCAR_CHAVE_FRONTEND
